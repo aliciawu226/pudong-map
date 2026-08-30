@@ -76,6 +76,15 @@
           <label class="field-label" for="noteInput">备注</label>
           <textarea id="noteInput" class="input" rows="3" placeholder="写点自己的备注"></textarea>
         </div>
+        <div class="field">
+          <span class="field-label">图片</span>
+          <div id="photoPreviews" class="photo-previews"></div>
+          <label class="btn btn-ghost btn-small" id="photoLabel">
+            选择图片
+            <input id="photoInput" type="file" accept="image/*" multiple hidden>
+          </label>
+          <p id="photoHint" class="photo-hint"></p>
+        </div>
         <div class="coord-line">
           <span id="coordText">坐标：未设置</span>
           <button id="pickBtn" class="btn btn-ghost btn-small" type="button">在地图上点选</button>
