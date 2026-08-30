@@ -161,6 +161,7 @@
         lat: r.lat,
         note: r.note || '',
         color: r.color || '',
+        photos: Array.isArray(r.photos) ? r.photos : [],
         sample: false,
         sort: r.sort_order || 0
       };
@@ -202,6 +203,7 @@
           lat: p.lat == null ? null : p.lat,
           note: p.note || '',
           color: p.color || '',
+          photos: Array.isArray(p.photos) ? p.photos : [],
           sort_order: i
         };
       });
@@ -249,6 +251,80 @@
     }
     return sha256Hex(password) === C.localAdminPasswordHash;
   };
+
+  SHARED.uploadPhoto = async function (file) {
+    const token = sessionStorage.getItem(TOKEN_KEY);
+    if (!SHARED.isCloudConfigured()) throw new Error('云端未配置，暂时不能上传图片');
+    if (!token) throw new Error('尚未登录云端');
+    const blob = await resizeImage(file);
+    const ext = blob.type === 'image/png' ? 'png' : 'jpg';
+    const objectPath = 'place-photos/' + SHARED.uid() + '.' + ext;
+    const res = await fetch(C.supabase.url + '/storage/v1/object/' + objectPath, {
+      method: 'POST',
+      headers: {
+        'apikey': C.supabase.anonKey,
+        'Authorization': 'Bearer ' + token,
+        'Content-Type': blob.type || 'image/jpeg'
+      },
+      body: blob
+    });
+    if (!res.ok) throw new Error('图片上传失败 ' + res.status);
+    return C.supabase.url + '/storage/v1/object/public/' + objectPath;
+  };
+
+  SHARED.deletePhoto = async function (publicUrl) {
+    const token = sessionStorage.getItem(TOKEN_KEY);
+    if (!token) return;
+    const marker = '/storage/v1/object/public/';
+    const idx = String(publicUrl || '').indexOf(marker);
+    if (idx === -1) return;
+    const objectPath = String(publicUrl).slice(idx + marker.length);
+    const res = await fetch(C.supabase.url + '/storage/v1/object/' + objectPath, {
+      method: 'DELETE',
+      headers: {
+        'apikey': C.supabase.anonKey,
+        'Authorization': 'Bearer ' + token
+      }
+    });
+    if (!res.ok) throw new Error('图片删除失败 ' + res.status);
+  };
+
+  function resizeImage(file) {
+    return new Promise(function (resolve, reject) {
+      const isPng = file.type === 'image/png';
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = function () {
+        let w = img.naturalWidth || img.width;
+        let h = img.naturalHeight || img.height;
+        const max = 1400;
+        if (w > max || h > max) {
+          const ratio = Math.min(max / w, max / h);
+          w = Math.round(w * ratio);
+          h = Math.round(h * ratio);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!isPng) {
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(0, 0, w, h);
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        canvas.toBlob(function (blob) {
+          URL.revokeObjectURL(url);
+          if (blob) resolve(blob);
+          else reject(new Error('图片处理失败'));
+        }, isPng ? 'image/png' : 'image/jpeg', 0.85);
+      };
+      img.onerror = function () {
+        URL.revokeObjectURL(url);
+        reject(new Error('图片读取失败'));
+      };
+      img.src = url;
+    });
+  }
 
   async function sha256Hex(text) {
     const data = new TextEncoder().encode(text);
