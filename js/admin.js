@@ -12,6 +12,7 @@
   let currentColor = '#2563eb';
   let currentLng = null;
   let currentLat = null;
+  let draftPhotos = [];
 
   const $ = function (id) { return document.getElementById(id); };
 
@@ -60,6 +61,8 @@
     $('sampleBtn').addEventListener('click', deleteSamples);
     $('adminSearch').addEventListener('input', renderList);
     $('adminList').addEventListener('click', onListClick);
+    $('photoInput').addEventListener('change', onPhotosSelected);
+    $('photoPreviews').addEventListener('click', onPhotoRemove);
 
     Array.prototype.forEach.call(document.querySelectorAll('input[name="placeType"]'), function (r) {
       r.addEventListener('change', onTypeChange);
@@ -102,6 +105,43 @@
     $('categoryList').innerHTML = App.DEFAULT_CATEGORIES.map(function (c) {
       return '<option value="' + c + '">';
     }).join('');
+  }
+
+  function renderPhotos() {
+    const cloud = App.isCloudConfigured();
+    $('photoInput').disabled = !cloud;
+    $('photoHint').textContent = cloud ? '每张图片会自动压缩后上传到云端' : '配置云端数据库后才能上传图片';
+    $('photoPreviews').innerHTML = draftPhotos.map(function (url, i) {
+      return '<div class="photo-thumb">' +
+        '<img src="' + App.escapeHtml(url) + '" alt="">' +
+        '<button class="photo-remove" data-url="' + App.escapeHtml(url) + '" data-index="' + i + '" type="button" title="删除">×</button>' +
+      '</div>';
+    }).join('');
+  }
+
+  async function onPhotosSelected() {
+    const files = Array.prototype.slice.call($('photoInput').files || []);
+    $('photoInput').value = '';
+    if (!files.length) return;
+    for (let i = 0; i < files.length; i++) {
+      try {
+        const url = await App.uploadPhoto(files[i]);
+        draftPhotos.push(url);
+        renderPhotos();
+      } catch (e) {
+        toast(e.message || '图片上传失败', true);
+      }
+    }
+  }
+
+  function onPhotoRemove(e) {
+    const btn = e.target.closest('.photo-remove');
+    if (!btn) return;
+    const url = btn.dataset.url;
+    const idx = draftPhotos.indexOf(url);
+    if (idx > -1) draftPhotos.splice(idx, 1);
+    App.deletePhoto(url).catch(function () { /* 云端删除失败也不影响保存 */ });
+    renderPhotos();
   }
 
   function initMap() {
@@ -242,7 +282,8 @@
       note: $('noteInput').value.trim(),
       color: type === 'work' ? App.WORK_COLOR : currentColor,
       lng: currentLng,
-      lat: currentLat
+      lat: currentLat,
+      photos: draftPhotos.slice()
     };
     if (editingId) {
       const idx = places.findIndex(function (p) { return p.id === editingId; });
@@ -277,6 +318,8 @@
     $('categoryInput').value = '';
     $('addressInput').value = '';
     $('noteInput').value = '';
+    draftPhotos = [];
+    renderPhotos();
     $('cancelBtn').hidden = true;
     $('typePlace').checked = true;
     currentLng = null;
@@ -299,6 +342,8 @@
     $('categoryInput').value = p.category || '';
     $('addressInput').value = p.address || '';
     $('noteInput').value = p.note || '';
+    draftPhotos = Array.isArray(p.photos) ? p.photos.slice() : [];
+    renderPhotos();
     currentColor = p.type === 'work' ? App.WORK_COLOR : (p.color || '#2563eb');
     renderSwatches();
     $('cancelBtn').hidden = false;
@@ -392,6 +437,7 @@
             lat: p.lat,
             note: p.note || '',
             color: p.color || '',
+            photos: Array.isArray(p.photos) ? p.photos : [],
             sample: false,
             sort: p.sort || 0
           };
