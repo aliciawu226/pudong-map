@@ -42,6 +42,14 @@ aliciawu226.github.io
 5. 把这两个值填到 `js/config.js` 的 `supabase` 里，重新上传到 GitHub。
 6. 之后管理页登录用的就是 Supabase 管理员账号的密码。
 
+注意：如果更新了 `supabase-setup.sql`（比如新增图片功能），需要回 Supabase 的
+“SQL Editor” 把整个文件内容重新运行一次，旧的语句会安全跳过，不会影响已有数据。
+
+## 地点图片
+
+管理页里每个地点可以上传多张图片。图片会自动压缩后存到 Supabase 的免费图床里，
+在地图弹窗里以缩略图显示，点击可以打开原图。图片上传需要先配置好 Supabase。
+
 ## 注意事项
 
 - 管理密码默认是 `pudong2026`，以指纹形式保存在 `js/config.js` 里；想换密码告诉助手重新生成即可。
