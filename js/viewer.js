@@ -211,12 +211,22 @@
     const note = p.note
       ? '<div class="iw-note">' + App.escapeHtml(p.note).replace(/\n/g, '<br>') + '</div>'
       : '';
+    const photos = Array.isArray(p.photos) && p.photos.length
+      ? p.photos
+      : [];
+    const photoHtml = photos.length
+      ? '<div class="iw-photos">' + photos.map(function (u) {
+          return '<a href="' + App.escapeHtml(u) + '" target="_blank" rel="noopener"><img src="' +
+            App.escapeHtml(u) + '" alt=""></a>';
+        }).join('') + '</div>'
+      : '';
     const html = '<div class="iw">' +
       '<div class="iw-head"><span class="dot" style="background:' + color + '"></span><b>' +
         App.escapeHtml(p.name) + '</b></div>' +
       '<div class="iw-tag">' + App.escapeHtml(tag) + '</div>' +
       (p.address ? '<div class="iw-addr">' + App.escapeHtml(p.address) + '</div>' : '') +
       note +
+      photoHtml +
       '<div class="iw-actions">' +
         '<button class="btn btn-ghost btn-small" data-action="origin" data-id="' + p.id + '" type="button">从这里出发</button>' +
         '<button class="btn btn-primary btn-small" data-action="dest" data-id="' + p.id + '" type="button">规划到这里</button>' +
