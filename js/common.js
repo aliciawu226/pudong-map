@@ -5,6 +5,7 @@
   const C = window.MAP_CONFIG || {};
   const LS_KEY = 'pudong_map_places_v1';
   const TOKEN_KEY = 'pudong_admin_token';
+  const REFRESH_KEY = 'pudong_refresh_token';
   const SHARED = {};
 
   SHARED.CATEGORY_COLORS = {
@@ -188,46 +189,79 @@
     return local;
   };
 
+  function apiError(res) {
+    const e = new Error('云端请求失败 ' + res.status);
+    e.status = res.status;
+    return e;
+  }
+
+  async function refreshCloudSession() {
+    const refreshToken = sessionStorage.getItem(REFRESH_KEY);
+    if (!refreshToken) throw new Error('登录已过期，请重新登录');
+    const res = await fetch(C.supabase.url + '/auth/v1/token?grant_type=refresh_token', {
+      method: 'POST',
+      headers: { 'apikey': C.supabase.anonKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken })
+    });
+    if (!res.ok) throw new Error('登录已过期，请重新登录');
+    const data = await res.json();
+    sessionStorage.setItem(TOKEN_KEY, data.access_token);
+    if (data.refresh_token) sessionStorage.setItem(REFRESH_KEY, data.refresh_token);
+    return data.access_token;
+  }
+
+  async function cloudUpsert(list, token) {
+    const body = list.map(function (p, i) {
+      return {
+        id: p.id,
+        name: p.name || '',
+        type: p.type === 'work' ? 'work' : 'place',
+        category: p.category || '',
+        address: p.address || '',
+        lng: p.lng == null ? null : p.lng,
+        lat: p.lat == null ? null : p.lat,
+        note: p.note || '',
+        color: p.color || '',
+        photos: Array.isArray(p.photos) ? p.photos : [],
+        sort_order: i
+      };
+    });
+    const upsertRes = await fetch(C.supabase.url + '/rest/v1/places?on_conflict=id', {
+      method: 'POST',
+      headers: Object.assign(supabaseHeaders(token), { 'Prefer': 'resolution=merge-duplicates' }),
+      body: JSON.stringify(body)
+    });
+    if (!upsertRes.ok) throw apiError(upsertRes);
+
+    const existing = await cloudLoad();
+    const ids = {};
+    list.forEach(function (p) { ids[p.id] = true; });
+    for (let i = 0; i < existing.length; i++) {
+      if (!ids[existing[i].id]) {
+        const delRes = await fetch(
+          C.supabase.url + '/rest/v1/places?id=eq.' + encodeURIComponent(existing[i].id),
+          { method: 'DELETE', headers: supabaseHeaders(token) }
+        );
+        if (!delRes.ok) throw apiError(delRes);
+      }
+    }
+    localSave(list);
+    return true;
+  }
+
   SHARED.savePlaces = async function (list) {
     if (SHARED.isCloudConfigured()) {
-      const token = sessionStorage.getItem(TOKEN_KEY);
+      let token = sessionStorage.getItem(TOKEN_KEY);
       if (!token) throw new Error('尚未登录云端');
-      const body = list.map(function (p, i) {
-        return {
-          id: p.id,
-          name: p.name || '',
-          type: p.type === 'work' ? 'work' : 'place',
-          category: p.category || '',
-          address: p.address || '',
-          lng: p.lng == null ? null : p.lng,
-          lat: p.lat == null ? null : p.lat,
-          note: p.note || '',
-          color: p.color || '',
-          photos: Array.isArray(p.photos) ? p.photos : [],
-          sort_order: i
-        };
-      });
-      const upsertRes = await fetch(C.supabase.url + '/rest/v1/places?on_conflict=id', {
-        method: 'POST',
-        headers: Object.assign(supabaseHeaders(token), { 'Prefer': 'resolution=merge-duplicates' }),
-        body: JSON.stringify(body)
-      });
-      if (!upsertRes.ok) throw new Error('云端保存失败 ' + upsertRes.status);
-
-      const existing = await cloudLoad();
-      const ids = {};
-      list.forEach(function (p) { ids[p.id] = true; });
-      for (let i = 0; i < existing.length; i++) {
-        if (!ids[existing[i].id]) {
-          const delRes = await fetch(
-            C.supabase.url + '/rest/v1/places?id=eq.' + encodeURIComponent(existing[i].id),
-            { method: 'DELETE', headers: supabaseHeaders(token) }
-          );
-          if (!delRes.ok) throw new Error('云端删除失败 ' + delRes.status);
+      try {
+        return await cloudUpsert(list, token);
+      } catch (e) {
+        if (e.status === 401) {
+          token = await refreshCloudSession();
+          return await cloudUpsert(list, token);
         }
+        throw e;
       }
-      localSave(list);
-      return true;
     }
     localSave(list);
     return false;
@@ -242,6 +276,7 @@
     if (!res.ok) throw new Error('云端登录失败，请检查密码');
     const data = await res.json();
     sessionStorage.setItem(TOKEN_KEY, data.access_token);
+    if (data.refresh_token) sessionStorage.setItem(REFRESH_KEY, data.refresh_token);
   };
 
   SHARED.tryLogin = async function (password) {
@@ -253,9 +288,21 @@
   };
 
   SHARED.uploadPhoto = async function (file) {
-    const token = sessionStorage.getItem(TOKEN_KEY);
     if (!SHARED.isCloudConfigured()) throw new Error('云端未配置，暂时不能上传图片');
+    let token = sessionStorage.getItem(TOKEN_KEY);
     if (!token) throw new Error('尚未登录云端');
+    try {
+      return await uploadPhotoOnce(file, token);
+    } catch (e) {
+      if (e.status === 401) {
+        token = await refreshCloudSession();
+        return await uploadPhotoOnce(file, token);
+      }
+      throw e;
+    }
+  };
+
+  async function uploadPhotoOnce(file, token) {
     const blob = await resizeImage(file);
     const ext = blob.type === 'image/png' ? 'png' : 'jpg';
     const objectPath = 'place-photos/' + SHARED.uid() + '.' + ext;
@@ -268,13 +315,26 @@
       },
       body: blob
     });
-    if (!res.ok) throw new Error('图片上传失败 ' + res.status);
+    if (!res.ok) throw apiError(res);
     return C.supabase.url + '/storage/v1/object/public/' + objectPath;
-  };
+  }
 
   SHARED.deletePhoto = async function (publicUrl) {
-    const token = sessionStorage.getItem(TOKEN_KEY);
+    let token = sessionStorage.getItem(TOKEN_KEY);
     if (!token) return;
+    try {
+      await deletePhotoOnce(publicUrl, token);
+    } catch (e) {
+      if (e.status === 401) {
+        token = await refreshCloudSession();
+        await deletePhotoOnce(publicUrl, token);
+      } else {
+        throw e;
+      }
+    }
+  };
+
+  async function deletePhotoOnce(publicUrl, token) {
     const marker = '/storage/v1/object/public/';
     const idx = String(publicUrl || '').indexOf(marker);
     if (idx === -1) return;
@@ -286,8 +346,8 @@
         'Authorization': 'Bearer ' + token
       }
     });
-    if (!res.ok) throw new Error('图片删除失败 ' + res.status);
-  };
+    if (!res.ok) throw apiError(res);
+  }
 
   function resizeImage(file) {
     return new Promise(function (resolve, reject) {
