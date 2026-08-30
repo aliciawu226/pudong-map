@@ -13,6 +13,10 @@
   let currentLng = null;
   let currentLat = null;
   let draftPhotos = [];
+  let placeSearcher = null;
+  let searchTimer = null;
+  let lastPlaceResults = [];
+  let pendingEditId = null;
 
   const $ = function (id) { return document.getElementById(id); };
 
@@ -42,6 +46,8 @@
 
   async function initEditor() {
     places = await App.loadPlaces();
+    const params = new URLSearchParams(window.location.search);
+    pendingEditId = params.get('edit');
     updateCount();
     renderList();
     App.loadAmap(initMap);
@@ -51,6 +57,8 @@
     $('saveBtn').addEventListener('click', savePlace);
     $('cancelBtn').addEventListener('click', resetForm);
     $('geocodeBtn').addEventListener('click', onGeocode);
+    $('addressInput').addEventListener('input', onAddressInput);
+    $('placeResults').addEventListener('click', onPlacePick);
     $('pickBtn').addEventListener('click', togglePick);
     $('exportBtn').addEventListener('click', exportData);
     $('importBtn').addEventListener('click', function () { $('fileInput').click(); });
@@ -153,6 +161,15 @@
     map.on('click', onMapClick);
     renderMarkers();
     if (markers.length) map.setFitView(markers, false, [80, 80, 80, 80]);
+    if (pendingEditId) {
+      const target = places.find(function (p) { return p.id === pendingEditId; });
+      pendingEditId = null;
+      if (target) {
+        startEdit(target.id);
+        const panel = document.querySelector('.form-panel');
+        if (panel) panel.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+    }
   }
 
   function renderMarkers() {
@@ -223,17 +240,80 @@
   }
 
   function geocode(address) {
+    return searchPlaces(address).then(function (pois) {
+      if (pois.length) {
+        const p = pois[0];
+        return { lng: p.location.lng, lat: p.location.lat, name: p.name, address: p.address };
+      }
+      return legacyGeocode(address);
+    });
+  }
+
+  function legacyGeocode(address) {
     return new Promise(function (resolve) {
       if (!geocoder) geocoder = new AMap.Geocoder({ city: '上海' });
       geocoder.getLocation(address, function (status, result) {
         if (status === 'complete' && result && result.geocodes && result.geocodes.length) {
           const g = result.geocodes[0];
-          resolve({ lng: g.location.lng, lat: g.location.lat });
+          resolve({ lng: g.location.lng, lat: g.location.lat, name: '', address: g.formattedAddress || '' });
         } else {
           resolve(null);
         }
       });
     });
+  }
+
+  function searchPlaces(keyword) {
+    return new Promise(function (resolve) {
+      if (!placeSearcher) placeSearcher = new AMap.PlaceSearch({ city: '上海', pageSize: 8, pageIndex: 1 });
+      placeSearcher.search(keyword, function (status, result) {
+        if (status === 'complete' && result && result.poiList && result.poiList.pois) {
+          resolve(result.poiList.pois);
+        } else {
+          resolve([]);
+        }
+      });
+    });
+  }
+
+  function onAddressInput() {
+    clearTimeout(searchTimer);
+    const value = $('addressInput').value.trim();
+    if (value.length < 2) {
+      $('placeResults').innerHTML = '';
+      return;
+    }
+    searchTimer = setTimeout(async function () {
+      const pois = await searchPlaces(value);
+      if ($('addressInput').value.trim() !== value) return;
+      showPlaceResults(pois);
+    }, 350);
+  }
+
+  function showPlaceResults(pois) {
+    lastPlaceResults = pois;
+    if (!pois.length) {
+      $('placeResults').innerHTML = '';
+      return;
+    }
+    $('placeResults').innerHTML = pois.map(function (p, i) {
+      return '<button class="place-result" data-index="' + i + '" type="button">' +
+        '<span class="place-result-name">' + App.escapeHtml(p.name) + '</span>' +
+        '<span class="place-result-addr">' + App.escapeHtml(p.address || '') + '</span>' +
+      '</button>';
+    }).join('');
+  }
+
+  function onPlacePick(e) {
+    const btn = e.target.closest('.place-result');
+    if (!btn) return;
+    const p = lastPlaceResults[Number(btn.dataset.index)];
+    if (!p) return;
+    if (!$('nameInput').value.trim()) $('nameInput').value = p.name;
+    $('addressInput').value = p.address || p.name;
+    setCoords(p.location.lng, p.location.lat);
+    $('placeResults').innerHTML = '';
+    toast('已定位：' + p.name);
   }
 
   async function onGeocode() {
@@ -252,7 +332,9 @@
       return;
     }
     setCoords(loc.lng, loc.lat);
-    toast('已定位');
+    if (loc.address) $('addressInput').value = loc.address;
+    $('placeResults').innerHTML = '';
+    toast(loc.name ? '已定位：' + loc.name : '已定位');
   }
 
   async function savePlace() {
@@ -291,8 +373,8 @@
     } else {
       places.push(Object.assign({ id: App.uid(), sample: false, sort: places.length }, data));
     }
-    await saveAndRefresh();
-    resetForm();
+    const ok = await saveAndRefresh();
+    if (ok) resetForm();
   }
 
   async function saveAndRefresh() {
@@ -308,7 +390,15 @@
     } catch (e) {
       status.textContent = '保存失败';
       toast(e.message || '保存失败，请重试', true);
+      if (e && e.status === 401) {
+        sessionStorage.removeItem('pudong_admin_token');
+        $('loginError').textContent = '登录已过期，请重新登录';
+        $('loginScreen').hidden = false;
+        $('editor').hidden = true;
+      }
+      return false;
     }
+    return true;
   }
 
   function resetForm() {
@@ -320,6 +410,7 @@
     $('noteInput').value = '';
     draftPhotos = [];
     renderPhotos();
+    $('placeResults').innerHTML = '';
     $('cancelBtn').hidden = true;
     $('typePlace').checked = true;
     currentLng = null;
@@ -395,7 +486,7 @@
             (p.address ? ' · ' + App.escapeHtml(p.address) : '') + '</div>' +
           (p.note ? '<div class="place-note">' + App.escapeHtml(p.note) + '</div>' : '') +
         '</div>' +
-        '<button class="btn btn-ghost btn-small edit" type="button">编辑</button>' +
+        '<button class="btn btn-primary btn-small edit" type="button">编辑</button>' +
         '<button class="btn btn-ghost btn-small delete" type="button">删除</button>' +
       '</div>';
     }).join('') || '<div class="empty">暂无地点</div>';
