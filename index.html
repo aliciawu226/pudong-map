@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>浦东地图</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">浦</div>
+      <div>
+        <h1>浦东地图</h1>
+        <p>我的地点与路线</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <a class="btn btn-ghost" href="admin.html">管理地点</a>
+    </div>
+  </header>
+
+  <main class="viewer">
+    <aside class="panel">
+      <div class="search-wrap">
+        <input id="searchInput" class="input" type="search" placeholder="搜索名称、地址或备注">
+      </div>
+      <div id="categoryChips" class="chips"></div>
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="places" type="button">地点</button>
+        <button class="tab" data-tab="route" type="button">路线</button>
+      </div>
+      <div id="placesTab" class="tab-panel active">
+        <div id="placeList" class="place-list"></div>
+      </div>
+      <div id="routeTab" class="tab-panel">
+        <div class="route-form">
+          <label class="field-label" for="originSelect">出发</label>
+          <select id="originSelect" class="input"></select>
+          <label class="field-label" for="destSelect">到达</label>
+          <select id="destSelect" class="input"></select>
+          <div class="mode-row" id="modeRow">
+            <button class="mode-btn active" data-mode="driving" type="button">驾车</button>
+            <button class="mode-btn" data-mode="transit" type="button">公交</button>
+            <button class="mode-btn" data-mode="riding" type="button">骑行</button>
+          </div>
+          <div class="route-actions">
+            <button id="routeBtn" class="btn btn-primary" type="button">规划路线</button>
+            <button id="clearRouteBtn" class="btn btn-ghost" type="button">清除</button>
+          </div>
+        </div>
+        <div id="routeResult" class="route-result"></div>
+      </div>
+    </aside>
+    <div class="map-wrap">
+      <div id="map"></div>
+      <div id="mapError" class="map-error" hidden>地图加载失败：请检查高德 Key 白名单，或允许高德地图脚本加载。</div>
+    </div>
+  </main>
+
+  <script src="js/config.js"></script>
+  <script src="js/common.js"></script>
+  <script src="js/viewer.js"></script>
+</body>
+</html>
