@@ -11,8 +11,8 @@ window.MAP_CONFIG = {
 
   // 云端数据库（Supabase）配置，暂时留空；配置后自动启用云端保存
   supabase: {
-    url: '',
-    anonKey: '',
+    url: 'https://mvowfcsmkvxupuqlceya.supabase.co',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im12b3dmY3Nta3Z4dXB1cWxjZXlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgwMzc5MDIsImV4cCI6MjEwMzYxMzkwMn0.DQeQT2AWppG0q7QXqB73kvnbRZOIzbYH0lkp3IUiyLY',
     adminEmail: 'aliciawu226@gmail.com'
   },
 
