@@ -88,6 +88,9 @@
       const id = btn.dataset.id;
       if (btn.dataset.action === 'dest') setRouteFromInfo(null, id);
       if (btn.dataset.action === 'origin') setRouteFromInfo(id, null);
+      if (btn.dataset.action === 'edit') {
+        window.location.href = 'admin.html?edit=' + encodeURIComponent(id);
+      }
     });
   }
 
@@ -230,6 +233,7 @@
       '<div class="iw-actions">' +
         '<button class="btn btn-ghost btn-small" data-action="origin" data-id="' + p.id + '" type="button">从这里出发</button>' +
         '<button class="btn btn-primary btn-small" data-action="dest" data-id="' + p.id + '" type="button">规划到这里</button>' +
+        '<button class="btn btn-ghost btn-small" data-action="edit" data-id="' + p.id + '" type="button">编辑</button>' +
       '</div>' +
     '</div>';
     infoWindow.setContent(html);
